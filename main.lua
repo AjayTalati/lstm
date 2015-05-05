@@ -69,20 +69,24 @@ local state_test =  {data=transfer_data(ptb.testdataset(params.batch_size))}
 local model = {}
 local paramx, paramdx
 
-local function lstm(i, prev_c, prev_h)
-  local function new_input_sum()
-    local i2h            = nn.Linear(params.rnn_size, params.rnn_size)
-    local h2h            = nn.Linear(params.rnn_size, params.rnn_size)
-    return nn.CAddTable()({i2h(i), h2h(prev_h)})
-  end
-  local in_gate          = nn.Sigmoid()(new_input_sum())
-  local forget_gate      = nn.Sigmoid()(new_input_sum())
-  local in_gate2         = nn.Tanh()(new_input_sum())
+local function lstm(x, prev_c, prev_h, input_size, rnn_size)
+  local i2h = nn.Linear(input_size, 4 * rnn_size)(x)
+  local h2h = nn.Linear(rnn_size, 4 * rnn_size)(prev_h)
+  local all_input_sums = nn.CAddTable()({i2h, h2h})
+ 
+  local sigmoid_chunk = nn.Narrow(2, 1, 3 * rnn_size)(all_input_sums)
+  sigmoid_chunk = nn.Sigmoid()(sigmoid_chunk)
+  local in_gate = nn.Narrow(2, 1, rnn_size)(sigmoid_chunk)
+  local forget_gate = nn.Narrow(2, rnn_size + 1, rnn_size)(sigmoid_chunk)
+  local out_gate = nn.Narrow(2, 2 * rnn_size + 1, rnn_size)(sigmoid_chunk)
+ 
+  local in_transform = nn.Narrow(2, 3 * rnn_size + 1, rnn_size)(all_input_sums)
+  in_transform = nn.Tanh()(in_transform)
+ 
   local next_c           = nn.CAddTable()({
-    nn.CMulTable()({forget_gate, prev_c}),
-    nn.CMulTable()({in_gate,     in_gate2})
-  })
-  local out_gate         = nn.Sigmoid()(new_input_sum())
+      nn.CMulTable()({forget_gate, prev_c}),
+      nn.CMulTable()({in_gate,     in_transform})
+    })
   local next_h           = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
   return next_c, next_h
 end
@@ -99,7 +103,7 @@ local function create_network()
     local prev_c         = split[2 * layer_idx - 1]
     local prev_h         = split[2 * layer_idx]
     local dropped        = nn.Dropout(params.dropout)(i[layer_idx - 1])
-    local next_c, next_h = lstm(dropped, prev_c, prev_h)
+    local next_c, next_h = lstm(dropped, prev_c, prev_h, params.rnn_size, params.rnn_size)
     table.insert(next_s, next_c)
     table.insert(next_s, next_h)
     i[layer_idx] = next_h

@@ -69,6 +69,9 @@ local state_test =  {data=transfer_data(ptb.testdataset(params.batch_size))}
 local model = {}
 local paramx, paramdx
 
+-- Original code by Andrej Karpathy
+-- https://gist.github.com/karpathy/7bae8033dcf5ca2630ba
+
 local function lstm(x, prev_c, prev_h, input_size, rnn_size)
   local i2h = nn.Linear(input_size, 4 * rnn_size)(x)
   local h2h = nn.Linear(rnn_size, 4 * rnn_size)(prev_h)
